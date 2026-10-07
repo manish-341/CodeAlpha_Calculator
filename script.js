@@ -1,7 +1,7 @@
 /**
  * ====================================================================
  * OMNICALC PRO — JAVASCRIPT MATH STUDIO ENGINE
- * Fast, Responsive Standard & Scientific Calculator
+ * Authentic Hardware Themes & High-Performance Calculator
  * ====================================================================
  */
 
@@ -14,7 +14,7 @@ const state = {
   shouldResetInput: false,   // True after clicking an operator or "="
   isScientific: false,       // Scientific mode active
   soundEnabled: true,        // Audio click
-  currentTheme: localStorage.getItem("omnicalc_theme") || "midnight",
+  currentTheme: localStorage.getItem("omnicalc_theme") || "apple",
   history: JSON.parse(localStorage.getItem("omnicalc_history") || "[]")
 };
 
@@ -419,20 +419,20 @@ function clearHistory() {
 }
 
 // ====================================================================
-// THEMES & QUICK TOOLS
+// AUTHENTIC CALCULATOR THEMES & QUICK TOOLS
 // ====================================================================
 
 const THEME_NAMES = {
-  midnight: "Midnight",
-  cyberpunk: "Cyberpunk",
-  aurora: "Aurora",
-  sunset: "Sunset",
-  light: "Luxe Light"
+  apple: "Apple iOS",
+  casio: "Retro Casio",
+  braun: "Braun ET66",
+  ti84: "TI-84",
+  midnight: "Midnight"
 };
 
 function initThemeSystem() {
   document.documentElement.setAttribute("data-theme", state.currentTheme);
-  dom.themeLabel.textContent = THEME_NAMES[state.currentTheme] || "Midnight";
+  dom.themeLabel.textContent = THEME_NAMES[state.currentTheme] || "Apple iOS";
 
   dom.themeDropdown.querySelectorAll(".theme-item").forEach(item => {
     item.classList.toggle("active", item.dataset.theme === state.currentTheme);
@@ -447,7 +447,7 @@ function initThemeSystem() {
       item.classList.add("active");
       dom.themeDropdown.classList.add("hidden");
 
-      showToast(`Theme: ${THEME_NAMES[theme]}`, "ri-palette-line");
+      showToast(`Applied ${THEME_NAMES[theme]} Theme`, "ri-palette-line");
     });
   });
 
