@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OmniCalc Pro — Advanced Precision Calculator</title>
-  <meta name="description" content="A modern, high-precision standard and scientific calculator featuring real-time calculation, calculation history tape, audio feedback, multi-theme customization, and full keyboard integration.">
+  <title>OmniCalc Pro — High-Performance Calculator</title>
+  <meta name="description" content="A fast, responsive, and intuitive calculator with standard & scientific modes, calculation history, multiple themes, and keyboard support.">
 
   <!-- Google Fonts: Outfit & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,11 +24,11 @@
   <div class="app-layout">
     <!-- Main Calculator Unit -->
     <main class="calc-card" role="region" aria-label="Calculator">
-      <!-- Calculator Header / Utility Bar -->
+      <!-- Calculator Header -->
       <header class="calc-header">
         <div class="calc-brand">
           <div class="brand-icon">
-            <i class="ri-calculator-line"></i>
+            <i class="ri-calculator-fill"></i>
           </div>
           <div class="brand-text">
             <span class="brand-name">OmniCalc<span class="accent-dot">.</span></span>
@@ -37,19 +37,13 @@
         </div>
 
         <div class="header-controls">
-          <!-- Sound Effects Toggle -->
-          <button id="sound-toggle-btn" class="util-btn active" title="Toggle Audio Feedback" aria-label="Audio feedback">
-            <i class="ri-volume-up-line"></i>
-          </button>
-
           <!-- Scientific Mode Toggle -->
           <button id="mode-toggle-btn" class="util-btn" title="Toggle Scientific Mode" aria-label="Scientific Mode">
-            <i class="ri-function-line"></i>
-            <span class="btn-text">Sci</span>
+            <i class="ri-flask-line"></i>
           </button>
 
           <!-- History Drawer Toggle -->
-          <button id="history-toggle-btn" class="util-btn" title="View Calculation History" aria-label="Calculation history">
+          <button id="history-toggle-btn" class="util-btn" title="Calculation History" aria-label="History">
             <i class="ri-history-line"></i>
           </button>
 
@@ -82,15 +76,14 @@
 
       <!-- Calculator Display Screen -->
       <section class="calc-screen" aria-live="polite">
-        <!-- Live Expression / Formula Display -->
+        <!-- Live Expression Line -->
         <div class="screen-top">
-          <span class="memory-badge hidden" id="memory-badge">M</span>
-          <div class="expression-line" id="expression-display" title="Current Expression"></div>
+          <div class="expression-line" id="expression-display"></div>
         </div>
 
         <!-- Main Real-Time Result / Input Line -->
         <div class="screen-bottom">
-          <button id="copy-btn" class="copy-btn" title="Copy to Clipboard" aria-label="Copy Result">
+          <button id="copy-btn" class="copy-btn" title="Copy Result" aria-label="Copy Result">
             <i class="ri-file-copy-line"></i>
           </button>
           <div class="result-line" id="result-display">0</div>
@@ -99,67 +92,67 @@
 
       <!-- Keypad Grid -->
       <section class="calc-keypad" id="calc-keypad">
-        <!-- Scientific Row / Panel (Collapsible / Dynamic) -->
+        <!-- Scientific Panel (Collapsible 4-column layout) -->
         <div class="scientific-panel hidden" id="scientific-panel">
           <button class="key sci-key" data-action="sin" title="Sine">sin</button>
           <button class="key sci-key" data-action="cos" title="Cosine">cos</button>
           <button class="key sci-key" data-action="tan" title="Tangent">tan</button>
-          <button class="key sci-key" data-action="pi" title="Pi (3.14159...)">π</button>
-          <button class="key sci-key" data-action="e" title="Euler's Number">e</button>
+          <button class="key sci-key" data-action="pi" title="Pi (π)">π</button>
 
           <button class="key sci-key" data-action="sqrt" title="Square Root">√</button>
-          <button class="key sci-key" data-action="power" title="Power (^)">xʸ</button>
-          <button class="key sci-key" data-action="log" title="Logarithm (base 10)">log</button>
-          <button class="key sci-key" data-action="ln" title="Natural Logarithm">ln</button>
-          <button class="key sci-key" data-action="fact" title="Factorial (!)">n!</button>
+          <button class="key sci-key" data-action="power" title="Power (xʸ)">xʸ</button>
+          <button class="key sci-key" data-action="log" title="Log (base 10)">log</button>
+          <button class="key sci-key" data-action="ln" title="Natural Log">ln</button>
+
+          <button class="key sci-key" data-action="bracket-open" title="Open Parenthesis">(</button>
+          <button class="key sci-key" data-action="bracket-close" title="Close Parenthesis">)</button>
+          <button class="key sci-key" data-action="fact" title="Factorial (n!)">n!</button>
+          <button class="key sci-key" data-action="e" title="Euler's Constant">e</button>
         </div>
 
-        <!-- Standard Keys Grid -->
+        <!-- Standard Intuitive 4-Column Layout (Industry Standard) -->
         <div class="standard-keys">
-          <!-- Row 1: Function Controls -->
+          <!-- Row 1 -->
           <button class="key func-key clear-key" data-action="clear" data-key="Escape" title="Clear All (Esc)">AC</button>
-          <button class="key func-key del-key" data-action="delete" data-key="Backspace" title="Delete Last Digit (Backspace)">
+          <button class="key func-key del-key" data-action="delete" data-key="Backspace" title="Delete Last (Backspace)">
             <i class="ri-delete-back-2-line"></i>
           </button>
-          <button class="key func-key" data-action="bracket-open" data-key="(" title="Open Parenthesis">(</button>
-          <button class="key func-key" data-action="bracket-close" data-key=")" title="Close Parenthesis">)</button>
+          <button class="key func-key" data-action="percent" data-key="%" title="Percentage (%)">%</button>
           <button class="key op-key" data-action="operator" data-val="/" data-key="/" title="Divide (/)">÷</button>
 
           <!-- Row 2 -->
           <button class="key num-key" data-val="7" data-key="7">7</button>
           <button class="key num-key" data-val="8" data-key="8">8</button>
           <button class="key num-key" data-val="9" data-key="9">9</button>
-          <button class="key func-key" data-action="percent" data-key="%" title="Percentage (%)">%</button>
           <button class="key op-key" data-action="operator" data-val="*" data-key="*" title="Multiply (*)">×</button>
 
           <!-- Row 3 -->
           <button class="key num-key" data-val="4" data-key="4">4</button>
           <button class="key num-key" data-val="5" data-key="5">5</button>
           <button class="key num-key" data-val="6" data-key="6">6</button>
-          <button class="key func-key" data-action="negate" title="Negate (±)">±</button>
           <button class="key op-key" data-action="operator" data-val="-" data-key="-" title="Subtract (-)">−</button>
 
           <!-- Row 4 -->
           <button class="key num-key" data-val="1" data-key="1">1</button>
           <button class="key num-key" data-val="2" data-key="2">2</button>
           <button class="key num-key" data-val="3" data-key="3">3</button>
-          <button class="key num-key" data-val="00" title="Double Zero">00</button>
           <button class="key op-key" data-action="operator" data-val="+" data-key="+" title="Add (+)">+</button>
 
           <!-- Row 5 -->
-          <button class="key num-key zero-key" data-val="0" data-key="0">0</button>
-          <button class="key num-key dot-key" data-val="." data-key="." title="Decimal Point">.</button>
+          <button class="key func-key" data-action="negate" title="Toggle Sign (±)">±</button>
+          <button class="key num-key" data-val="0" data-key="0">0</button>
+          <button class="key num-key" data-val="." data-key="." title="Decimal Point">.</button>
           <button class="key equals-key" data-action="calculate" data-key="Enter" title="Calculate (Enter)">=</button>
         </div>
       </section>
 
-      <!-- Keyboard Shortcuts Quick Bar -->
+      <!-- Calculator Footer -->
       <footer class="calc-footer">
-        <div class="keyboard-legend-pill" id="shortcuts-btn" title="View Keyboard Shortcuts">
+        <button class="keyboard-legend-pill" id="shortcuts-btn" title="View Keyboard Shortcuts">
           <i class="ri-keyboard-line"></i>
           <span>Keyboard Enabled</span>
-        </div>
-        <span class="precision-badge">64-Bit Float</span>
+        </button>
+        <span class="precision-badge">High Precision</span>
       </footer>
     </main>
 
@@ -203,7 +196,6 @@
         <div class="shortcut-item"><kbd>Enter</kbd> or <kbd>=</kbd> <span>Calculate Result</span></div>
         <div class="shortcut-item"><kbd>Backspace</kbd> <span>Delete last character</span></div>
         <div class="shortcut-item"><kbd>Esc</kbd> or <kbd>c</kbd> <span>Clear All</span></div>
-        <div class="shortcut-item"><kbd>(</kbd> <kbd>)</kbd> <span>Parentheses</span></div>
         <div class="shortcut-item"><kbd>%</kbd> <span>Percentage</span></div>
       </div>
     </div>

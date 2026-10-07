@@ -1,26 +1,18 @@
 /**
  * ====================================================================
- * OMNICALC PRO — JAVASCRIPT ENGINE
- * Advanced Standard & Scientific Calculator
- * Features:
- *   - Precision arithmetic (+, −, ×, ÷, %) with BODMAS precedence
- *   - Real-time live result evaluation as you type
- *   - Scientific mode: sin, cos, tan, sqrt, power, log, ln, factorial, pi, e
- *   - Calculation history tape with LocalStorage persistence & recall
- *   - HTML5 Web Audio API tactile audio click synthesis (no external assets)
- *   - Full physical keyboard support with visual key depression
- *   - 5 multi-theme switcher with persistent settings
- *   - Copy-to-clipboard with toast feedback
+ * OMNICALC PRO — HIGH-PERFORMANCE JAVASCRIPT ENGINE
+ * Instant, Intuitive Standard & Scientific Calculator
  * ====================================================================
  */
 
 // --- Calculator State ---
 const state = {
-  expression: "",       // Expression being formed (e.g. "125 * 4 + 50")
-  displayValue: "0",    // Current active operand or result
-  lastCalculated: false,// Whether the current value was the result of "="
-  isScientific: false,  // Whether scientific mode is active
-  soundEnabled: true,   // Audio feedback toggle
+  currentInput: "0",        // Current number shown in large display
+  previousOperand: null,     // First operand before operator
+  pendingOperator: null,     // Active operator ('+', '-', '*', '/')
+  expressionPreview: "",     // Top formula line
+  shouldResetInput: false,   // True after clicking an operator or "="
+  isScientific: false,       // Scientific mode panel
   currentTheme: localStorage.getItem("omnicalc_theme") || "midnight",
   history: JSON.parse(localStorage.getItem("omnicalc_history") || "[]")
 };
@@ -32,7 +24,6 @@ const dom = {
   resultDisplay: document.getElementById("result-display"),
   scientificPanel: document.getElementById("scientific-panel"),
   modeToggleBtn: document.getElementById("mode-toggle-btn"),
-  soundToggleBtn: document.getElementById("sound-toggle-btn"),
   historyToggleBtn: document.getElementById("history-toggle-btn"),
   historyDrawer: document.getElementById("history-drawer"),
   historyList: document.getElementById("history-list"),
@@ -49,99 +40,24 @@ const dom = {
 };
 
 // ====================================================================
-// WEB AUDIO API CLICK SOUND SYNTHESIZER
-// ====================================================================
-let audioCtx = null;
-
-function playKeyClickSound(frequency = 600, duration = 0.02) {
-  if (!state.soundEnabled) return;
-
-  try {
-    if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === "suspended") {
-      audioCtx.resume();
-    }
-
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(frequency * 0.5, audioCtx.currentTime + duration);
-
-    gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    osc.start();
-    osc.stop(audioCtx.currentTime + duration);
-  } catch (err) {
-    // Audio context silent fallback
-  }
-}
-
-// ====================================================================
-// CORE CALCULATOR LOGIC
+// CORE CALCULATOR ACTIONS
 // ====================================================================
 
 /**
- * Handle digit or decimal entry
+ * Handle Digits & Decimal Point
  */
 function inputDigit(digit) {
-  playKeyClickSound(750);
+  clearActiveOperatorHighlight();
 
-  // If user just pressed "=" and types a new digit, reset expression
-  if (state.lastCalculated) {
-    state.expression = "";
-    state.displayValue = digit === "." ? "0." : digit;
-    state.lastCalculated = false;
+  if (state.shouldResetInput) {
+    state.currentInput = digit === "." ? "0." : digit;
+    state.shouldResetInput = false;
   } else {
     if (digit === ".") {
-      // Prevent multiple decimals in the same number segment
-      const lastToken = getLastToken(state.expression + state.displayValue);
-      if (lastToken.includes(".")) return;
-      state.displayValue = state.displayValue === "0" ? "0." : state.displayValue + ".";
-    } else if (digit === "00") {
-      if (state.displayValue === "0") return;
-      state.displayValue += "00";
+      if (state.currentInput.includes(".")) return;
+      state.currentInput += ".";
     } else {
-      if (state.displayValue === "0") {
-        state.displayValue = digit;
-      } else {
-        state.displayValue += digit;
-      }
-    }
-  }
-
-  updateScreen();
-  evaluateLivePreview();
-}
-
-/**
- * Handle standard arithmetic operators (+, -, *, /)
- */
-function inputOperator(op) {
-  playKeyClickSound(550);
-  state.lastCalculated = false;
-
-  const currentVal = state.displayValue;
-  const expr = state.expression.trim();
-
-  // If there is a current number, append it to expression
-  if (currentVal !== "") {
-    state.expression = expr ? `${expr} ${currentVal} ${op}` : `${currentVal} ${op}`;
-    state.displayValue = "";
-  } else if (expr) {
-    // If last token was an operator, replace it
-    const tokens = expr.split(" ");
-    const last = tokens[tokens.length - 1];
-    if (["+", "-", "*", "/"].includes(last)) {
-      tokens[tokens.length - 1] = op;
-      state.expression = tokens.join(" ");
+      state.currentInput = state.currentInput === "0" ? digit : state.currentInput + digit;
     }
   }
 
@@ -149,153 +65,169 @@ function inputOperator(op) {
 }
 
 /**
- * Calculate the final result (=)
+ * Handle Operators (+, −, ×, ÷)
  */
-function calculateResult() {
-  playKeyClickSound(900, 0.04);
-  const fullExpr = `${state.expression} ${state.displayValue}`.trim();
-  if (!fullExpr) return;
+function handleOperator(nextOperator) {
+  const inputValue = parseFloat(state.currentInput);
 
-  try {
-    const sanitized = sanitizeMathExpression(fullExpr);
-    const result = evaluateExpression(sanitized);
+  // If an operator was already pending and user didn't enter a new number, just change the operator
+  if (state.pendingOperator && state.shouldResetInput) {
+    state.pendingOperator = nextOperator;
+    state.expressionPreview = `${formatNumber(state.previousOperand)} ${formatOperatorSymbol(nextOperator)}`;
+    highlightActiveOperator(nextOperator);
+    updateScreen();
+    return;
+  }
 
-    if (isNaN(result) || !isFinite(result)) {
-      state.displayValue = "Cannot divide by 0";
-      state.lastCalculated = true;
-      updateScreen();
+  if (state.previousOperand === null) {
+    state.previousOperand = inputValue;
+  } else if (state.pendingOperator) {
+    const result = compute(state.previousOperand, inputValue, state.pendingOperator);
+    if (!isFinite(result)) {
+      handleError("Cannot divide by 0");
       return;
     }
+    state.currentInput = `${formatNumber(result)}`;
+    state.previousOperand = result;
+  }
 
-    // Format clean number
-    const formatted = formatNumber(result);
-    
-    // Save to calculation history
-    addHistoryItem(formatDisplayExpression(fullExpr), formatted);
+  state.shouldResetInput = true;
+  state.pendingOperator = nextOperator;
+  state.expressionPreview = `${formatNumber(state.previousOperand)} ${formatOperatorSymbol(nextOperator)}`;
 
-    state.expression = "";
-    state.displayValue = formatted;
-    state.lastCalculated = true;
-    updateScreen();
-  } catch (err) {
-    state.displayValue = "Error";
-    state.lastCalculated = true;
-    updateScreen();
+  highlightActiveOperator(nextOperator);
+  updateScreen();
+}
+
+/**
+ * Compute the final result (=)
+ */
+function handleEquals() {
+  if (!state.pendingOperator || state.previousOperand === null) return;
+
+  const currentVal = parseFloat(state.currentInput);
+  const result = compute(state.previousOperand, currentVal, state.pendingOperator);
+
+  if (!isFinite(result)) {
+    handleError("Cannot divide by 0");
+    return;
+  }
+
+  const prevFormatted = formatNumber(state.previousOperand);
+  const currFormatted = formatNumber(currentVal);
+  const opSymbol = formatOperatorSymbol(state.pendingOperator);
+  const resultFormatted = formatNumber(result);
+
+  // Top line shows full completed formula: "96 + 9 ="
+  state.expressionPreview = `${prevFormatted} ${opSymbol} ${currFormatted} =`;
+  // Main big line shows the answer: "105"
+  state.currentInput = `${resultFormatted}`;
+
+  // Save to history tape
+  addHistoryItem(`${prevFormatted} ${opSymbol} ${currFormatted}`, resultFormatted);
+
+  state.previousOperand = null;
+  state.pendingOperator = null;
+  state.shouldResetInput = true;
+
+  clearActiveOperatorHighlight();
+  updateScreen();
+}
+
+/**
+ * Core Arithmetic Calculation
+ */
+function compute(a, b, op) {
+  switch (op) {
+    case "+": return a + b;
+    case "-": return a - b;
+    case "*": return a * b;
+    case "/": return b === 0 ? Infinity : a / b;
+    case "^": return Math.pow(a, b);
+    default: return b;
   }
 }
 
 /**
- * Live real-time preview before clicking "="
- */
-function evaluateLivePreview() {
-  const fullExpr = `${state.expression} ${state.displayValue}`.trim();
-  if (!fullExpr || !state.expression) return;
-
-  try {
-    const sanitized = sanitizeMathExpression(fullExpr);
-    const result = evaluateExpression(sanitized);
-    if (!isNaN(result) && isFinite(result)) {
-      dom.expressionDisplay.textContent = `${formatDisplayExpression(fullExpr)} = ${formatNumber(result)}`;
-    }
-  } catch (e) {
-    // Live preview fails gracefully until syntax is complete
-  }
-}
-
-/**
- * Safe expression evaluation replacing math symbols
- */
-function sanitizeMathExpression(expr) {
-  return expr
-    .replace(/×/g, "*")
-    .replace(/÷/g, "/")
-    .replace(/−/g, "-")
-    .replace(/\^/g, "**")
-    .replace(/π/g, `${Math.PI}`)
-    .replace(/e(?![a-z])/g, `${Math.E}`);
-}
-
-function evaluateExpression(str) {
-  // Safe math parser using Function constructor without global scope pollution
-  return Function(`'use strict'; return (${str})`)();
-}
-
-/**
- * Handle special scientific actions (sin, cos, tan, sqrt, etc.)
+ * Scientific Functions
  */
 function handleScientificAction(action) {
-  playKeyClickSound(650);
-  let val = parseFloat(state.displayValue) || 0;
-  let result = null;
+  clearActiveOperatorHighlight();
+  let val = parseFloat(state.currentInput) || 0;
+  let res = null;
+  let formulaLabel = "";
 
   switch (action) {
     case "sin":
-      result = Math.sin((val * Math.PI) / 180); // In degrees
-      addHistoryItem(`sin(${val}°)`, formatNumber(result));
+      res = Math.sin((val * Math.PI) / 180);
+      formulaLabel = `sin(${val}°)`;
       break;
     case "cos":
-      result = Math.cos((val * Math.PI) / 180);
-      addHistoryItem(`cos(${val}°)`, formatNumber(result));
+      res = Math.cos((val * Math.PI) / 180);
+      formulaLabel = `cos(${val}°)`;
       break;
     case "tan":
-      result = Math.tan((val * Math.PI) / 180);
-      addHistoryItem(`tan(${val}°)`, formatNumber(result));
+      res = Math.tan((val * Math.PI) / 180);
+      formulaLabel = `tan(${val}°)`;
       break;
     case "sqrt":
       if (val < 0) {
-        showToast("Invalid Input for √", "ri-error-warning-line");
+        handleError("Invalid Input");
         return;
       }
-      result = Math.sqrt(val);
-      addHistoryItem(`√(${val})`, formatNumber(result));
-      break;
-    case "log":
-      if (val <= 0) return;
-      result = Math.log10(val);
-      addHistoryItem(`log(${val})`, formatNumber(result));
-      break;
-    case "ln":
-      if (val <= 0) return;
-      result = Math.log(val);
-      addHistoryItem(`ln(${val})`, formatNumber(result));
+      res = Math.sqrt(val);
+      formulaLabel = `√(${val})`;
       break;
     case "power":
-      state.expression = `${val} ^`;
-      state.displayValue = "";
-      updateScreen();
+      handleOperator("^");
       return;
-    case "fact":
-      result = factorial(Math.min(Math.floor(val), 170));
-      addHistoryItem(`${val}!`, formatNumber(result));
+    case "log":
+      if (val <= 0) {
+        handleError("Invalid Input");
+        return;
+      }
+      res = Math.log10(val);
+      formulaLabel = `log(${val})`;
+      break;
+    case "ln":
+      if (val <= 0) {
+        handleError("Invalid Input");
+        return;
+      }
+      res = Math.log(val);
+      formulaLabel = `ln(${val})`;
       break;
     case "pi":
-      state.displayValue = `${Math.PI}`;
+      state.currentInput = `${Math.PI}`;
+      state.shouldResetInput = true;
       updateScreen();
       return;
     case "e":
-      state.displayValue = `${Math.E}`;
+      state.currentInput = `${Math.E}`;
+      state.shouldResetInput = true;
       updateScreen();
       return;
-    case "bracket-open":
-      state.expression = `${state.expression} (`.trim();
-      updateScreen();
-      return;
-    case "bracket-close":
-      state.expression = `${state.expression} ${state.displayValue} )`.trim();
-      state.displayValue = "";
-      updateScreen();
-      return;
+    case "fact":
+      res = factorial(Math.min(Math.floor(val), 170));
+      formulaLabel = `${val}!`;
+      break;
     case "percent":
-      result = val / 100;
+      res = val / 100;
+      formulaLabel = `${val}%`;
       break;
     case "negate":
-      result = val * -1;
+      res = val * -1;
       break;
   }
 
-  if (result !== null) {
-    state.displayValue = formatNumber(result);
-    state.lastCalculated = true;
+  if (res !== null) {
+    const formatted = formatNumber(res);
+    if (formulaLabel) {
+      state.expressionPreview = `${formulaLabel} =`;
+      addHistoryItem(formulaLabel, formatted);
+    }
+    state.currentInput = `${formatted}`;
+    state.shouldResetInput = true;
     updateScreen();
   }
 }
@@ -309,75 +241,90 @@ function factorial(n) {
 }
 
 /**
- * Clear All (AC)
+ * Clear Screen (AC)
  */
 function clearAll() {
-  playKeyClickSound(400, 0.03);
-  state.expression = "";
-  state.displayValue = "0";
-  state.lastCalculated = false;
+  state.currentInput = "0";
+  state.previousOperand = null;
+  state.pendingOperator = null;
+  state.expressionPreview = "";
+  state.shouldResetInput = false;
+  clearActiveOperatorHighlight();
   updateScreen();
 }
 
 /**
- * Delete last entered character (Backspace)
+ * Delete last digit (Backspace / DEL)
  */
 function deleteLast() {
-  playKeyClickSound(450);
-  if (state.lastCalculated) {
+  if (state.shouldResetInput) {
     clearAll();
     return;
   }
 
-  if (state.displayValue.length > 1) {
-    state.displayValue = state.displayValue.slice(0, -1);
+  if (state.currentInput.length > 1) {
+    state.currentInput = state.currentInput.slice(0, -1);
   } else {
-    state.displayValue = "0";
+    state.currentInput = "0";
   }
   updateScreen();
-  evaluateLivePreview();
 }
 
-/**
- * Screen Display Update & Auto-Shrink Font
- */
-function updateScreen() {
-  const exprDisplay = formatDisplayExpression(state.expression);
-  dom.expressionDisplay.textContent = exprDisplay;
-  
-  const text = state.displayValue || "0";
-  dom.resultDisplay.textContent = text;
+function handleError(msg) {
+  state.currentInput = msg;
+  state.previousOperand = null;
+  state.pendingOperator = null;
+  state.shouldResetInput = true;
+  clearActiveOperatorHighlight();
+  updateScreen();
+}
 
-  // Auto shrink font size for long numbers
+// ====================================================================
+// UI PRESENTATION & SCREEN HELPERS
+// ====================================================================
+
+function updateScreen() {
+  dom.expressionDisplay.textContent = state.expressionPreview;
+  dom.resultDisplay.textContent = state.currentInput;
+
+  // Auto-shrink font if number is long
+  const len = state.currentInput.length;
   dom.resultDisplay.className = "result-line";
-  const len = text.length;
-  if (len > 14) {
+  if (len > 13) {
     dom.resultDisplay.classList.add("shrink-3");
-  } else if (len > 10) {
+  } else if (len > 9) {
     dom.resultDisplay.classList.add("shrink-2");
   } else if (len > 7) {
     dom.resultDisplay.classList.add("shrink-1");
   }
 }
 
-function formatDisplayExpression(expr) {
-  return expr
-    .replace(/\*/g, " × ")
-    .replace(/\//g, " ÷ ")
-    .replace(/-/g, " − ")
-    .replace(/\+/g, " + ");
+function formatOperatorSymbol(op) {
+  switch (op) {
+    case "*": return "×";
+    case "/": return "÷";
+    case "-": return "−";
+    case "+": return "+";
+    case "^": return "^";
+    default: return op;
+  }
 }
 
 function formatNumber(num) {
   if (isNaN(num) || !isFinite(num)) return "Error";
-  // Fix 0.1 + 0.2 floating point inaccuracies
-  const rounded = parseFloat(num.toFixed(10));
+  // Fix 0.1 + 0.2 floating point issues
+  const rounded = Math.round(num * 1e10) / 1e10;
   return `${rounded}`;
 }
 
-function getLastToken(str) {
-  const parts = str.trim().split(/[\s+\-*/]+/);
-  return parts[parts.length - 1] || "";
+function highlightActiveOperator(op) {
+  clearActiveOperatorHighlight();
+  const btn = document.querySelector(`.op-key[data-val="${op}"]`);
+  if (btn) btn.classList.add("active-operator");
+}
+
+function clearActiveOperatorHighlight() {
+  document.querySelectorAll(".op-key").forEach(btn => btn.classList.remove("active-operator"));
 }
 
 // ====================================================================
@@ -388,8 +335,7 @@ function addHistoryItem(expr, ans) {
   const item = {
     id: Date.now(),
     expr: expr,
-    ans: ans,
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ans: ans
   };
 
   state.history.unshift(item);
@@ -418,8 +364,8 @@ function renderHistory() {
 
   dom.historyList.querySelectorAll(".history-item").forEach(el => {
     el.addEventListener("click", () => {
-      state.displayValue = el.dataset.ans;
-      state.lastCalculated = true;
+      state.currentInput = el.dataset.ans;
+      state.shouldResetInput = true;
       updateScreen();
       showToast(`Recalled ${el.dataset.ans}`, "ri-history-line");
     });
@@ -434,7 +380,7 @@ function clearHistory() {
 }
 
 // ====================================================================
-// THEME & UTILITIES
+// THEME & TOAST FEEDBACK
 // ====================================================================
 
 function initThemeSystem() {
@@ -468,7 +414,6 @@ function initThemeSystem() {
   });
 }
 
-// Toast Feedback
 let toastTimer;
 function showToast(message, icon = "ri-check-line") {
   clearTimeout(toastTimer);
@@ -480,10 +425,9 @@ function showToast(message, icon = "ri-check-line") {
   dom.toast.classList.add("show");
   toastTimer = setTimeout(() => {
     dom.toast.classList.remove("show");
-  }, 2200);
+  }, 2000);
 }
 
-// Copy to Clipboard
 function copyResultToClipboard() {
   const result = dom.resultDisplay.textContent;
   if (!result || result === "Error") return;
@@ -496,10 +440,10 @@ function copyResultToClipboard() {
 }
 
 // ====================================================================
-// PHYSICAL KEYBOARD INTEGRATION & EVENT LISTENERS
+// EVENT LISTENERS & KEYBOARD MAPPING
 // ====================================================================
 
-function initKeypadListeners() {
+function initListeners() {
   // Keypad clicks
   document.querySelectorAll(".key").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -509,9 +453,9 @@ function initKeypadListeners() {
       if (val !== undefined && action === undefined) {
         inputDigit(val);
       } else if (action === "operator") {
-        inputOperator(val);
+        handleOperator(val);
       } else if (action === "calculate") {
-        calculateResult();
+        handleEquals();
       } else if (action === "clear") {
         clearAll();
       } else if (action === "delete") {
@@ -528,17 +472,7 @@ function initKeypadListeners() {
     dom.modeToggleBtn.classList.toggle("active", state.isScientific);
     dom.scientificPanel.classList.toggle("hidden", !state.isScientific);
     dom.calcCard.classList.toggle("scientific-active", state.isScientific);
-    showToast(state.isScientific ? "Scientific Mode Enabled" : "Standard Mode", "ri-function-line");
-  });
-
-  // Sound Toggle
-  dom.soundToggleBtn.addEventListener("click", () => {
-    state.soundEnabled = !state.soundEnabled;
-    dom.soundToggleBtn.classList.toggle("active", state.soundEnabled);
-    dom.soundToggleBtn.innerHTML = state.soundEnabled 
-      ? `<i class="ri-volume-up-line"></i>` 
-      : `<i class="ri-volume-mute-line"></i>`;
-    showToast(state.soundEnabled ? "Audio Click Enabled" : "Muted", "ri-volume-up-line");
+    showToast(state.isScientific ? "Scientific Mode Enabled" : "Standard Mode", "ri-flask-line");
   });
 
   // History Drawer Toggle
@@ -565,10 +499,9 @@ function initKeypadListeners() {
 
   // Physical Keyboard Listener
   window.addEventListener("keydown", (e) => {
-    // Ignore if modal open
     if (dom.shortcutsModal.open) return;
 
-    // Visual button press helper
+    // Visual button press feedback
     highlightPhysicalKey(e.key);
 
     if (e.key >= "0" && e.key <= "9") {
@@ -577,20 +510,16 @@ function initKeypadListeners() {
       inputDigit(".");
     } else if (["+", "-", "*", "/"].includes(e.key)) {
       e.preventDefault();
-      inputOperator(e.key);
+      handleOperator(e.key);
     } else if (e.key === "Enter" || e.key === "=") {
       e.preventDefault();
-      calculateResult();
+      handleEquals();
     } else if (e.key === "Backspace") {
       e.preventDefault();
       deleteLast();
     } else if (e.key === "Escape" || e.key.toLowerCase() === "c") {
       e.preventDefault();
       clearAll();
-    } else if (e.key === "(") {
-      handleScientificAction("bracket-open");
-    } else if (e.key === ")") {
-      handleScientificAction("bracket-close");
     } else if (e.key === "%") {
       handleScientificAction("percent");
     }
@@ -605,16 +534,16 @@ function highlightPhysicalKey(key) {
   const btn = document.querySelector(selector);
   if (btn) {
     btn.classList.add("pressed");
-    setTimeout(() => btn.classList.remove("pressed"), 120);
+    setTimeout(() => btn.classList.remove("pressed"), 100);
   }
 }
 
-// --- App Initialization ---
+// --- Initialize App ---
 function init() {
   initThemeSystem();
   renderHistory();
   updateScreen();
-  initKeypadListeners();
+  initListeners();
 }
 
 document.addEventListener("DOMContentLoaded", init);
