@@ -1,7 +1,7 @@
 /**
  * ====================================================================
- * OMNICALC PRO — HIGH-PERFORMANCE JAVASCRIPT ENGINE
- * Instant, Intuitive Standard & Scientific Calculator
+ * OMNICALC PRO — JAVASCRIPT MATH STUDIO ENGINE
+ * Fast, Responsive Standard & Scientific Calculator
  * ====================================================================
  */
 
@@ -12,32 +12,56 @@ const state = {
   pendingOperator: null,     // Active operator ('+', '-', '*', '/')
   expressionPreview: "",     // Top formula line
   shouldResetInput: false,   // True after clicking an operator or "="
-  isScientific: false,       // Scientific mode panel
+  isScientific: false,       // Scientific mode active
+  soundEnabled: true,        // Audio click
   currentTheme: localStorage.getItem("omnicalc_theme") || "midnight",
   history: JSON.parse(localStorage.getItem("omnicalc_history") || "[]")
 };
 
 // --- DOM Selectors ---
 const dom = {
-  calcCard: document.querySelector(".calc-card"),
   expressionDisplay: document.getElementById("expression-display"),
   resultDisplay: document.getElementById("result-display"),
+  activeOpBadge: document.getElementById("active-op-badge"),
   scientificPanel: document.getElementById("scientific-panel"),
-  modeToggleBtn: document.getElementById("mode-toggle-btn"),
-  historyToggleBtn: document.getElementById("history-toggle-btn"),
-  historyDrawer: document.getElementById("history-drawer"),
+  tabStandard: document.getElementById("tab-standard"),
+  tabScientific: document.getElementById("tab-scientific"),
+  soundToggleBtn: document.getElementById("sound-toggle-btn"),
   historyList: document.getElementById("history-list"),
   clearHistoryBtn: document.getElementById("clear-history-btn"),
-  closeHistoryBtn: document.getElementById("close-history-btn"),
   copyBtn: document.getElementById("copy-btn"),
   themeBtn: document.getElementById("theme-btn"),
   themeDropdown: document.getElementById("theme-dropdown"),
   themeMenuWrap: document.getElementById("theme-menu-wrap"),
+  themeLabel: document.getElementById("theme-label"),
   shortcutsBtn: document.getElementById("shortcuts-btn"),
   shortcutsModal: document.getElementById("shortcuts-modal"),
   closeModalBtn: document.getElementById("close-modal-btn"),
   toast: document.getElementById("toast")
 };
+
+// ====================================================================
+// WEB AUDIO SOUND SYNTHESIS (LIGHTWEIGHT & NON-BLOCKING)
+// ====================================================================
+let audioCtx = null;
+
+function playSound(freq = 650) {
+  if (!state.soundEnabled) return;
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.02);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.02);
+  } catch (e) {}
+}
 
 // ====================================================================
 // CORE CALCULATOR ACTIONS
@@ -47,6 +71,7 @@ const dom = {
  * Handle Digits & Decimal Point
  */
 function inputDigit(digit) {
+  playSound(720);
   clearActiveOperatorHighlight();
 
   if (state.shouldResetInput) {
@@ -68,9 +93,9 @@ function inputDigit(digit) {
  * Handle Operators (+, −, ×, ÷)
  */
 function handleOperator(nextOperator) {
+  playSound(580);
   const inputValue = parseFloat(state.currentInput);
 
-  // If an operator was already pending and user didn't enter a new number, just change the operator
   if (state.pendingOperator && state.shouldResetInput) {
     state.pendingOperator = nextOperator;
     state.expressionPreview = `${formatNumber(state.previousOperand)} ${formatOperatorSymbol(nextOperator)}`;
@@ -103,6 +128,7 @@ function handleOperator(nextOperator) {
  * Compute the final result (=)
  */
 function handleEquals() {
+  playSound(900);
   if (!state.pendingOperator || state.previousOperand === null) return;
 
   const currentVal = parseFloat(state.currentInput);
@@ -120,7 +146,7 @@ function handleEquals() {
 
   // Top line shows full completed formula: "96 + 9 ="
   state.expressionPreview = `${prevFormatted} ${opSymbol} ${currFormatted} =`;
-  // Main big line shows the answer: "105"
+  // Main big line shows answer: "105"
   state.currentInput = `${resultFormatted}`;
 
   // Save to history tape
@@ -134,9 +160,6 @@ function handleEquals() {
   updateScreen();
 }
 
-/**
- * Core Arithmetic Calculation
- */
 function compute(a, b, op) {
   switch (op) {
     case "+": return a + b;
@@ -152,6 +175,7 @@ function compute(a, b, op) {
  * Scientific Functions
  */
 function handleScientificAction(action) {
+  playSound(640);
   clearActiveOperatorHighlight();
   let val = parseFloat(state.currentInput) || 0;
   let res = null;
@@ -244,6 +268,7 @@ function factorial(n) {
  * Clear Screen (AC)
  */
 function clearAll() {
+  playSound(450);
   state.currentInput = "0";
   state.previousOperand = null;
   state.pendingOperator = null;
@@ -254,9 +279,10 @@ function clearAll() {
 }
 
 /**
- * Delete last digit (Backspace / DEL)
+ * Delete last digit (DEL / Backspace)
  */
 function deleteLast() {
+  playSound(480);
   if (state.shouldResetInput) {
     clearAll();
     return;
@@ -280,23 +306,37 @@ function handleError(msg) {
 }
 
 // ====================================================================
-// UI PRESENTATION & SCREEN HELPERS
+// SCREEN DISPLAY HELPERS
 // ====================================================================
 
 function updateScreen() {
   dom.expressionDisplay.textContent = state.expressionPreview;
-  dom.resultDisplay.textContent = state.currentInput;
+  dom.resultDisplay.textContent = formatWithCommas(state.currentInput);
 
-  // Auto-shrink font if number is long
+  if (state.pendingOperator) {
+    dom.activeOpBadge.classList.remove("hidden");
+    dom.activeOpBadge.textContent = formatOperatorSymbol(state.pendingOperator);
+  } else {
+    dom.activeOpBadge.classList.add("hidden");
+  }
+
+  // Auto shrink font size for long numbers
   const len = state.currentInput.length;
   dom.resultDisplay.className = "result-line";
-  if (len > 13) {
+  if (len > 14) {
     dom.resultDisplay.classList.add("shrink-3");
-  } else if (len > 9) {
+  } else if (len > 10) {
     dom.resultDisplay.classList.add("shrink-2");
   } else if (len > 7) {
     dom.resultDisplay.classList.add("shrink-1");
   }
+}
+
+function formatWithCommas(valStr) {
+  if (valStr === "Error" || isNaN(valStr) || valStr.includes("Cannot")) return valStr;
+  const parts = valStr.split(".");
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return parts.join(".");
 }
 
 function formatOperatorSymbol(op) {
@@ -312,7 +352,6 @@ function formatOperatorSymbol(op) {
 
 function formatNumber(num) {
   if (isNaN(num) || !isFinite(num)) return "Error";
-  // Fix 0.1 + 0.2 floating point issues
   const rounded = Math.round(num * 1e10) / 1e10;
   return `${rounded}`;
 }
@@ -348,8 +387,8 @@ function renderHistory() {
   if (state.history.length === 0) {
     dom.historyList.innerHTML = `
       <div class="history-empty">
-        <i class="ri-draft-line"></i>
-        <p>No calculation history yet.<br>Start calculating!</p>
+        <i class="ri-calculator-line"></i>
+        <p>Calculations you make will appear here for instant 1-click replay.</p>
       </div>
     `;
     return;
@@ -358,7 +397,7 @@ function renderHistory() {
   dom.historyList.innerHTML = state.history.map(item => `
     <div class="history-item" data-ans="${item.ans}" title="Click to recall answer">
       <div class="history-expr">${item.expr}</div>
-      <div class="history-ans">= ${item.ans}</div>
+      <div class="history-ans">= ${formatWithCommas(item.ans)}</div>
     </div>
   `).join("");
 
@@ -380,11 +419,20 @@ function clearHistory() {
 }
 
 // ====================================================================
-// THEME & TOAST FEEDBACK
+// THEMES & QUICK TOOLS
 // ====================================================================
+
+const THEME_NAMES = {
+  midnight: "Midnight",
+  cyberpunk: "Cyberpunk",
+  aurora: "Aurora",
+  sunset: "Sunset",
+  light: "Luxe Light"
+};
 
 function initThemeSystem() {
   document.documentElement.setAttribute("data-theme", state.currentTheme);
+  dom.themeLabel.textContent = THEME_NAMES[state.currentTheme] || "Midnight";
 
   dom.themeDropdown.querySelectorAll(".theme-item").forEach(item => {
     item.classList.toggle("active", item.dataset.theme === state.currentTheme);
@@ -394,11 +442,12 @@ function initThemeSystem() {
       document.documentElement.setAttribute("data-theme", theme);
       localStorage.setItem("omnicalc_theme", theme);
 
+      dom.themeLabel.textContent = THEME_NAMES[theme];
       dom.themeDropdown.querySelectorAll(".theme-item").forEach(t => t.classList.remove("active"));
       item.classList.add("active");
       dom.themeDropdown.classList.add("hidden");
 
-      showToast(`Theme: ${item.textContent.trim()}`, "ri-palette-line");
+      showToast(`Theme: ${THEME_NAMES[theme]}`, "ri-palette-line");
     });
   });
 
@@ -411,6 +460,35 @@ function initThemeSystem() {
     if (!dom.themeMenuWrap.contains(e.target)) {
       dom.themeDropdown.classList.add("hidden");
     }
+  });
+}
+
+function initQuickTools() {
+  // Constant cards (π, e, φ, c)
+  document.querySelectorAll(".constant-tile").forEach(tile => {
+    tile.addEventListener("click", () => {
+      const val = tile.dataset.val;
+      state.currentInput = val;
+      state.shouldResetInput = true;
+      updateScreen();
+      showToast(`Inserted ${tile.querySelector(".tile-name").textContent}`, "ri-sparkling-fill");
+    });
+  });
+
+  // Quick % preset buttons (+10%, +15%, etc.)
+  document.querySelectorAll(".preset-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const pct = parseFloat(btn.dataset.percent);
+      const curr = parseFloat(state.currentInput) || 0;
+      const res = curr + (curr * (pct / 100));
+      const formatted = formatNumber(res);
+      addHistoryItem(`${curr} + ${pct}%`, formatted);
+      state.expressionPreview = `${curr} + ${pct}% =`;
+      state.currentInput = formatted;
+      state.shouldResetInput = true;
+      updateScreen();
+      showToast(`Applied +${pct}%`, "ri-percent-line");
+    });
   });
 }
 
@@ -429,7 +507,7 @@ function showToast(message, icon = "ri-check-line") {
 }
 
 function copyResultToClipboard() {
-  const result = dom.resultDisplay.textContent;
+  const result = state.currentInput;
   if (!result || result === "Error") return;
 
   navigator.clipboard.writeText(result).then(() => {
@@ -466,25 +544,29 @@ function initListeners() {
     });
   });
 
-  // Scientific Mode Toggle
-  dom.modeToggleBtn.addEventListener("click", () => {
-    state.isScientific = !state.isScientific;
-    dom.modeToggleBtn.classList.toggle("active", state.isScientific);
-    dom.scientificPanel.classList.toggle("hidden", !state.isScientific);
-    dom.calcCard.classList.toggle("scientific-active", state.isScientific);
-    showToast(state.isScientific ? "Scientific Mode Enabled" : "Standard Mode", "ri-flask-line");
+  // Mode Tabs
+  dom.tabStandard.addEventListener("click", () => {
+    state.isScientific = false;
+    dom.tabStandard.classList.add("active");
+    dom.tabScientific.classList.remove("active");
+    dom.scientificPanel.classList.add("hidden");
   });
 
-  // History Drawer Toggle
-  dom.historyToggleBtn.addEventListener("click", () => {
-    const isHidden = dom.historyDrawer.classList.contains("hidden");
-    dom.historyDrawer.classList.toggle("hidden", !isHidden);
-    dom.historyToggleBtn.classList.toggle("active", isHidden);
+  dom.tabScientific.addEventListener("click", () => {
+    state.isScientific = true;
+    dom.tabScientific.classList.add("active");
+    dom.tabStandard.classList.remove("active");
+    dom.scientificPanel.classList.remove("hidden");
   });
 
-  dom.closeHistoryBtn.addEventListener("click", () => {
-    dom.historyDrawer.classList.add("hidden");
-    dom.historyToggleBtn.classList.remove("active");
+  // Sound toggle
+  dom.soundToggleBtn.addEventListener("click", () => {
+    state.soundEnabled = !state.soundEnabled;
+    dom.soundToggleBtn.classList.toggle("active", state.soundEnabled);
+    dom.soundToggleBtn.innerHTML = state.soundEnabled 
+      ? `<i class="ri-volume-up-line"></i>` 
+      : `<i class="ri-volume-mute-line"></i>`;
+    showToast(state.soundEnabled ? "Audio Click Enabled" : "Muted", "ri-volume-up-line");
   });
 
   dom.clearHistoryBtn.addEventListener("click", clearHistory);
@@ -501,7 +583,6 @@ function initListeners() {
   window.addEventListener("keydown", (e) => {
     if (dom.shortcutsModal.open) return;
 
-    // Visual button press feedback
     highlightPhysicalKey(e.key);
 
     if (e.key >= "0" && e.key <= "9") {
@@ -541,6 +622,7 @@ function highlightPhysicalKey(key) {
 // --- Initialize App ---
 function init() {
   initThemeSystem();
+  initQuickTools();
   renderHistory();
   updateScreen();
   initListeners();
